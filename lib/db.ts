@@ -5,7 +5,9 @@ import { VDC_TEAM_NAMES } from './team';
 
 export { VDC_TEAM_NAMES };
 
-const DATA_FILE = path.join(process.cwd(), 'equipment-data.json');
+const DATA_FILE = process.env.VERCEL
+  ? '/tmp/equipment-data.json'
+  : path.join(process.cwd(), 'equipment-data.json');
 
 /* ─── types ─────────────────────────────────────── */
 export interface Equipment {
