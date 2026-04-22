@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { equipment_id, user_name, location, checkout_type, job_number, cost_code, notes, components_included } = body;
-    if (!equipment_id || !user_name || !location || !checkout_type || !job_number || !cost_code)
+    if (!equipment_id || !user_name || !location || !checkout_type)
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     const eq = await getEquipmentById(equipment_id);
     if (!eq) return NextResponse.json({ error: 'Equipment not found' }, { status: 404 });

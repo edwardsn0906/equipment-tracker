@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import {
   Package, MapPin, Clock, LogOut, LogIn, ArrowLeft,
-  CheckCircle, Wrench, Hash, DollarSign, User, ChevronDown, AlertCircle,
+  CheckCircle, Wrench, Hash, DollarSign, ChevronDown, AlertCircle,
+  AlertTriangle, X,
 } from 'lucide-react';
 import { VDC_TEAM, VDC_TEAM_NAMES, getMemberColor, getMemberGradient, getInitials } from '@/lib/team';
 
@@ -16,6 +17,12 @@ interface ActivityRow {
   checked_in_at: string | null; duration_minutes: number | null;
   timestamp: string; components_included: string[] | null;
 }
+interface IssueRow {
+  id: number; reported_by: string; description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'resolved'; reported_at: string;
+  resolved_at: string | null; resolved_by: string | null;
+}
 interface Equipment {
   id: string; name: string; category: string;
   description: string; serial_number: string;
@@ -23,7 +30,7 @@ interface Equipment {
   current_user: string | null; current_location: string | null;
   checkout_type: string | null; job_number: string | null;
   cost_code: string | null; checked_out_at: string | null;
-  activity: ActivityRow[]; components: string[];
+  activity: ActivityRow[]; components: string[]; issues: IssueRow[];
 }
 
 /* ─── helpers ────────────────────────────────────── */
@@ -80,6 +87,13 @@ export default function EquipmentPage({ params }: { params: { id: string } }) {
   const [notes, setNotes] = useState('');
   const [checkinNotes, setCheckinNotes] = useState('');
   const [selectedComponents, setSelectedComponents] = useState<Set<string>>(new Set());
+
+  // issue form
+  const [showIssueForm, setShowIssueForm] = useState(false);
+  const [issueReporter, setIssueReporter] = useState('');
+  const [issueSeverity, setIssueSeverity] = useState<'low'|'medium'|'high'|'critical'>('medium');
+  const [issueDesc, setIssueDesc] = useState('');
+  const [issueSubmitting, setIssueSubmitting] = useState(false);
 
   const fetchEq = async () => {
     const res = await fetch(`/api/equipment/${params.id}`);
@@ -280,14 +294,14 @@ export default function EquipmentPage({ params }: { params: { id: string } }) {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Job # *</label>
-                <input required value={jobNumber} onChange={e => setJobNumber(e.target.value)}
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Job # <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input value={jobNumber} onChange={e => setJobNumber(e.target.value)}
                   placeholder="e.g. JOB-2024-047"
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Cost Code *</label>
-                <input required value={costCode} onChange={e => setCostCode(e.target.value)}
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Cost Code <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input value={costCode} onChange={e => setCostCode(e.target.value)}
                   placeholder="e.g. CC-1420"
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base" />
               </div>
@@ -356,6 +370,109 @@ export default function EquipmentPage({ params }: { params: { id: string } }) {
                   {submitting ? 'Checking In…' : 'Confirm Check In'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Report Issue */}
+        {!showIssueForm ? (
+          <button onClick={() => setShowIssueForm(true)}
+            className="w-full py-3 rounded-2xl border-2 border-dashed border-amber-300 text-amber-700 font-medium text-sm flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors">
+            <AlertTriangle size={16} /> Report an Issue with This Equipment
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2"><AlertTriangle size={16} className="text-amber-500" /> Report Issue</h3>
+              <button onClick={() => { setShowIssueForm(false); setIssueDesc(''); setIssueReporter(''); setIssueSeverity('medium'); }}
+                className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={15} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Your Name *</label>
+                <div className="relative">
+                  <select value={issueReporter} onChange={e => setIssueReporter(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-base bg-white appearance-none">
+                    <option value="">Select your name…</option>
+                    {VDC_TEAM_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+                    <option value="Other">Other</option>
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Severity *</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['low','medium','high','critical'] as const).map(s => {
+                    const cfg = { low: 'bg-blue-50 text-blue-700 border-blue-200', medium: 'bg-amber-50 text-amber-700 border-amber-200', high: 'bg-orange-50 text-orange-700 border-orange-200', critical: 'bg-red-50 text-red-700 border-red-200' };
+                    const sel = { low: 'bg-blue-600 text-white border-blue-600', medium: 'bg-amber-500 text-white border-amber-500', high: 'bg-orange-500 text-white border-orange-500', critical: 'bg-red-600 text-white border-red-600' };
+                    return (
+                      <button key={s} type="button" onClick={() => setIssueSeverity(s)}
+                        className={`py-2 rounded-xl border text-xs font-semibold capitalize transition-colors ${issueSeverity === s ? sel[s] : cfg[s]}`}>
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Description *</label>
+                <textarea value={issueDesc} onChange={e => setIssueDesc(e.target.value)}
+                  placeholder="Describe the issue in detail…" rows={3} autoFocus
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400 text-base resize-none" />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => { setShowIssueForm(false); setIssueDesc(''); setIssueReporter(''); setIssueSeverity('medium'); }}
+                  className="flex-1 py-3 border border-slate-200 rounded-xl font-medium text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
+                <button
+                  disabled={!issueReporter || !issueDesc.trim() || issueSubmitting}
+                  onClick={async () => {
+                    setIssueSubmitting(true);
+                    await fetch('/api/issues', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ equipment_id: eq.id, equipment_name: eq.name, reported_by: issueReporter, description: issueDesc.trim(), severity: issueSeverity }),
+                    });
+                    setIssueSubmitting(false); setShowIssueForm(false);
+                    setIssueDesc(''); setIssueReporter(''); setIssueSeverity('medium');
+                    setSuccess('Issue reported. Thank you!');
+                    await fetchEq();
+                  }}
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl font-bold transition-colors">
+                  {issueSubmitting ? 'Submitting…' : 'Submit Issue'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Issues for this equipment */}
+        {eq.issues && eq.issues.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                <AlertTriangle size={15} className="text-amber-500" /> Issue Log
+              </h3>
+              <span className="text-xs text-slate-400">{eq.issues.filter(i => i.status === 'open').length} open</span>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {eq.issues.map(issue => {
+                const sev = { low: 'bg-blue-50 text-blue-700', medium: 'bg-amber-50 text-amber-700', high: 'bg-orange-50 text-orange-700', critical: 'bg-red-50 text-red-700' };
+                return (
+                  <div key={issue.id} className="px-5 py-3.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold capitalize ${sev[issue.severity]}`}>{issue.severity}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${issue.status === 'open' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{issue.status}</span>
+                          <span className="text-xs text-slate-400">{new Date(issue.reported_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        </div>
+                        <p className="text-sm text-slate-800">{issue.description}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Reported by {issue.reported_by}{issue.resolved_by ? ` · Resolved by ${issue.resolved_by}` : ''}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

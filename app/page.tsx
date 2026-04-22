@@ -7,7 +7,7 @@ import {
   Wrench, Crown, CheckCircle, LogOut, LogIn, Activity, BarChart2,
   ChevronDown, Hash, DollarSign, AlertTriangle, Camera, Plane, Tablet, ScanLine,
 } from 'lucide-react';
-import { VDC_TEAM, getMemberColor, getMemberGradient, getInitials } from '@/lib/team';
+import { VDC_TEAM, VDC_TEAM_NAMES, getMemberColor, getMemberGradient, getInitials } from '@/lib/team';
 
 /* ─── types ─────────────────────────────────────── */
 interface Equipment {
@@ -19,6 +19,7 @@ interface Equipment {
   cost_code: string | null; checked_out_at: string | null;
   created_at: string; activity_count: number;
   latest_activity: string | null; components: string[];
+  open_issue_count: number;
 }
 interface ActivityRow {
   id: number; equipment_id: string; equipment_name: string;
@@ -28,6 +29,13 @@ interface ActivityRow {
   notes: string | null; checked_out_at: string | null;
   checked_in_at: string | null; duration_minutes: number | null;
   timestamp: string; components_included: string[] | null;
+}
+interface IssueRow {
+  id: number; equipment_id: string; equipment_name: string;
+  reported_by: string; description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'resolved'; reported_at: string;
+  resolved_at: string | null; resolved_by: string | null;
 }
 
 /* ─── helpers ────────────────────────────────────── */
@@ -383,15 +391,172 @@ function UsageTable({ rows, equipment }: { rows: ActivityRow[]; equipment: Equip
   );
 }
 
+/* ─── Issues Table ───────────────────────────────── */
+const SEV_CFG = {
+  low:      { bg: 'bg-blue-50',   text: 'text-blue-700',   label: 'Low'      },
+  medium:   { bg: 'bg-amber-50',  text: 'text-amber-700',  label: 'Medium'   },
+  high:     { bg: 'bg-orange-50', text: 'text-orange-700', label: 'High'     },
+  critical: { bg: 'bg-red-50',    text: 'text-red-700',    label: 'Critical' },
+};
+
+function IssuesTable({ issues, equipment, onResolved }: { issues: IssueRow[]; equipment: Equipment[]; onResolved: () => void }) {
+  const [filterEq, setFilterEq] = useState('all');
+  const [filterSev, setFilterSev] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('open');
+  const [resolving, setResolving] = useState<number | null>(null);
+  const [resolverName, setResolverName] = useState('');
+  const [resolveTarget, setResolveTarget] = useState<number | null>(null);
+
+  const filtered = issues.filter(i => {
+    if (filterEq !== 'all' && i.equipment_id !== filterEq) return false;
+    if (filterSev !== 'all' && i.severity !== filterSev) return false;
+    if (filterStatus !== 'all' && i.status !== filterStatus) return false;
+    return true;
+  });
+
+  const openCount = issues.filter(i => i.status === 'open').length;
+  const critHighCount = issues.filter(i => i.status === 'open' && (i.severity === 'critical' || i.severity === 'high')).length;
+
+  // issue counts per equipment for "repeated issues" callout
+  const issueCounts = issues.reduce<Record<string, number>>((acc, i) => {
+    acc[i.equipment_id] = (acc[i.equipment_id] ?? 0) + 1;
+    return acc;
+  }, {});
+  const repeated = equipment.filter(e => (issueCounts[e.id] ?? 0) >= 3);
+
+  const doResolve = async (id: number) => {
+    if (!resolverName.trim()) return;
+    setResolving(id);
+    await fetch(`/api/issues/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resolved_by: resolverName }) });
+    setResolving(null); setResolveTarget(null); setResolverName('');
+    onResolved();
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Open Issues', value: openCount, color: 'text-red-600', bg: 'bg-red-50' },
+          { label: 'High / Critical', value: critHighCount, color: 'text-orange-600', bg: 'bg-orange-50' },
+          { label: 'Repeat Problem Items', value: repeated.length, color: 'text-purple-600', bg: 'bg-purple-50' },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-2xl border border-slate-100 p-4">
+            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Repeated problem equipment callout */}
+      {repeated.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+          <p className="text-sm font-semibold text-red-800 mb-1">Repeated Problem Equipment (3+ issues)</p>
+          <div className="flex flex-wrap gap-2">
+            {repeated.map(e => (
+              <a key={e.id} href={`/equipment/${e.id}`} target="_blank"
+                className="text-xs px-2.5 py-1 bg-white border border-red-200 rounded-full text-red-700 hover:bg-red-100 transition-colors">
+                {e.name} ({issueCounts[e.id]} issues)
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          { value: filterStatus, set: setFilterStatus, opts: [['all','All Status'],['open','Open'],['resolved','Resolved']], label: 'Status' },
+          { value: filterSev, set: setFilterSev, opts: [['all','All Severity'],['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']], label: 'Severity' },
+          { value: filterEq, set: setFilterEq, opts: [['all','All Equipment'], ...equipment.map(e => [e.id, e.name] as [string,string])], label: 'Equipment' },
+        ].map(f => (
+          <div key={f.label} className="relative">
+            <select value={f.value} onChange={e => f.set(e.target.value)}
+              className="pl-3 pr-8 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+              {f.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+        ))}
+        <span className="ml-auto text-xs text-slate-400 self-center">{filtered.length} records</span>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100">
+              {['Equipment','Severity','Status','Reported By','Description','Reported','Resolved By','Action'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 text-sm">No issues match filters</td></tr>
+            ) : filtered.map(issue => {
+              const sc = SEV_CFG[issue.severity] ?? SEV_CFG.medium;
+              return (
+                <tr key={issue.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
+                  <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
+                    <a href={`/equipment/${issue.equipment_id}`} target="_blank" className="hover:text-blue-600 transition-colors">{issue.equipment_name}</a>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${sc.bg} ${sc.text}`}>{sc.label}</span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${issue.status === 'open' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{issue.status}</span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{issue.reported_by}</td>
+                  <td className="px-4 py-3 text-xs text-slate-700 max-w-[240px]">{issue.description}</td>
+                  <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{new Date(issue.reported_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{issue.resolved_by ?? '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {issue.status === 'open' && resolveTarget !== issue.id && (
+                      <button onClick={() => setResolveTarget(issue.id)}
+                        className="text-xs px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-medium transition-colors">
+                        Resolve
+                      </button>
+                    )}
+                    {issue.status === 'open' && resolveTarget === issue.id && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative">
+                          <select value={resolverName} onChange={e => setResolverName(e.target.value)}
+                            className="pl-2 pr-6 py-1 text-xs border border-slate-200 rounded-lg bg-white appearance-none focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                            <option value="">Who?</option>
+                            {VDC_TEAM_NAMES.map(n => <option key={n} value={n}>{n.split(' ')[0]}</option>)}
+                          </select>
+                          <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                        <button onClick={() => doResolve(issue.id)} disabled={!resolverName || resolving === issue.id}
+                          className="text-xs px-2 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg font-medium transition-colors">
+                          {resolving === issue.id ? '…' : '✓'}
+                        </button>
+                        <button onClick={() => { setResolveTarget(null); setResolverName(''); }}
+                          className="text-xs px-1.5 py-1 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">✕</button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Dashboard ──────────────────────────────────── */
 export default function Dashboard() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [issues, setIssues] = useState<IssueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('all');
-  const [tab, setTab] = useState<'equipment' | 'activity' | 'history'>('equipment');
+  const [tab, setTab] = useState<'equipment' | 'activity' | 'history' | 'issues'>('equipment');
   const [qrEq, setQrEq] = useState<Equipment | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -399,9 +564,9 @@ export default function Dashboard() {
 
   const fetchAll = useCallback(async (quiet = false) => {
     if (!quiet) setRefreshing(true);
-    const [eRes, aRes] = await Promise.all([fetch('/api/equipment'), fetch('/api/activity')]);
-    const [eData, aData] = await Promise.all([eRes.json(), aRes.json()]);
-    setEquipment(eData); setActivity(aData);
+    const [eRes, aRes, iRes] = await Promise.all([fetch('/api/equipment'), fetch('/api/activity'), fetch('/api/issues')]);
+    const [eData, aData, iData] = await Promise.all([eRes.json(), aRes.json(), iRes.json()]);
+    setEquipment(eData); setActivity(aData); setIssues(iData);
     setLoading(false); setLastUpdated(new Date()); setRefreshing(false);
   }, []);
 
@@ -422,10 +587,13 @@ export default function Dashboard() {
     maint: equipment.filter(e => e.status === 'maintenance').length,
   };
 
+  const openIssueCount = issues.filter(i => i.status === 'open').length;
+
   const TABS = [
     { id: 'equipment', label: 'Equipment', icon: Package },
     { id: 'activity', label: 'Activity Feed', icon: Activity },
     { id: 'history', label: 'Usage History', icon: BarChart2 },
+    { id: 'issues', label: 'Issues', icon: AlertTriangle, badge: openIssueCount },
   ] as const;
 
   return (
@@ -473,11 +641,14 @@ export default function Dashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
               <t.icon size={14} />{t.label}
+              {'badge' in t && t.badge > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full leading-none">{t.badge}</span>
+              )}
             </button>
           ))}
         </div>
@@ -558,6 +729,9 @@ export default function Dashboard() {
 
         {/* Usage history table */}
         {tab === 'history' && <UsageTable rows={activity} equipment={equipment} />}
+
+        {/* Issues tab */}
+        {tab === 'issues' && <IssuesTable issues={issues} equipment={equipment} onResolved={() => fetchAll(true)} />}
 
         {lastUpdated && <p className="text-xs text-slate-400 text-center">Updated {lastUpdated.toLocaleTimeString()} · Auto-refreshes every 30s</p>}
       </div>
