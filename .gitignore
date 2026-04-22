@@ -1,0 +1,8 @@
+.next/
+node_modules/
+equipment-data.json
+*.db
+.env
+.env.local
+.env*.local
+.vercel/
