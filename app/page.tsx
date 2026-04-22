@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Package, Plus, Search, RefreshCw, QrCode, ExternalLink,
-  Zap, Shield, Ruler, Wind, Building, Battery, ArrowUpFromLine,
-  Crosshair, MapPin, User, Clock, X, Download, Star, Lightbulb,
+  Zap, Ruler, Crosshair, MapPin, Clock, X, Download, Star, Lightbulb,
   Wrench, Crown, CheckCircle, LogOut, LogIn, Activity, BarChart2,
-  ChevronDown, Hash, DollarSign, AlertTriangle,
+  ChevronDown, Hash, DollarSign, AlertTriangle, Camera, Plane, Tablet, ScanLine,
 } from 'lucide-react';
 import { VDC_TEAM, getMemberColor, getMemberGradient, getInitials } from '@/lib/team';
 
@@ -19,7 +18,7 @@ interface Equipment {
   checkout_type: string | null; job_number: string | null;
   cost_code: string | null; checked_out_at: string | null;
   created_at: string; activity_count: number;
-  latest_activity: string | null;
+  latest_activity: string | null; components: string[];
 }
 interface ActivityRow {
   id: number; equipment_id: string; equipment_name: string;
@@ -28,20 +27,20 @@ interface ActivityRow {
   job_number: string | null; cost_code: string | null;
   notes: string | null; checked_out_at: string | null;
   checked_in_at: string | null; duration_minutes: number | null;
-  timestamp: string;
+  timestamp: string; components_included: string[] | null;
 }
 
 /* ─── helpers ────────────────────────────────────── */
 const CATEGORIES = [
-  'Power Tools','Power Equipment','Survey Equipment','Safety Equipment',
-  'Measurement','Cleaning Equipment','Concrete Equipment','Access Equipment','Other',
+  'Total Station', 'Faro Scanner', '360 Camera', 'Drone',
+  'Layout Tablet', 'iPad', 'Other',
 ];
 
 function categoryIcon(cat: string) {
   const m: Record<string, React.ElementType> = {
-    'Power Tools': Zap, 'Power Equipment': Battery, 'Survey Equipment': Crosshair,
-    'Safety Equipment': Shield, 'Measurement': Ruler, 'Access Equipment': ArrowUpFromLine,
-    'Concrete Equipment': Building, 'Cleaning Equipment': Wind,
+    'Total Station': Crosshair, 'Faro Scanner': ScanLine,
+    '360 Camera': Camera, 'Drone': Plane,
+    'Layout Tablet': Tablet, 'iPad': Tablet,
   };
   return m[cat] ?? Package;
 }
@@ -142,33 +141,41 @@ function QRModal({ eq, onClose }: { eq: Equipment; onClose: () => void }) {
 
 /* ─── Add Equipment Modal ────────────────────────── */
 function AddModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [form, setForm] = useState({ name: '', category: 'Power Tools', serial_number: '', description: '' });
+  const [form, setForm] = useState({ name: '', category: 'Total Station', serial_number: '', description: '' });
+  const [components, setComponents] = useState<string[]>([]);
+  const [compInput, setCompInput] = useState('');
   const [loading, setLoading] = useState(false);
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const addComponent = () => {
+    const val = compInput.trim();
+    if (val && !components.includes(val)) setComponents(c => [...c, val]);
+    setCompInput('');
+  };
+  const removeComponent = (c: string) => setComponents(cs => cs.filter(x => x !== c));
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
-    await fetch('/api/equipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    await fetch('/api/equipment', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, components }),
+    });
     setLoading(false); onDone(); onClose();
   };
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-semibold text-slate-900">Add Equipment</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={16} /></button>
         </div>
         <form onSubmit={submit} className="space-y-4">
-          {[
-            { label: 'Name *', key: 'name', ph: 'e.g. Dewalt 20V Drill', req: true },
-            { label: 'Serial Number', key: 'serial_number', ph: 'e.g. DW-2024-001', req: false },
-          ].map(f => (
-            <div key={f.key}>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{f.label}</label>
-              <input required={f.req} value={(form as any)[f.key]} onChange={e => set(f.key, e.target.value)}
-                placeholder={f.ph}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
-            </div>
-          ))}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
+            <input required value={form.name} onChange={e => set('name', e.target.value)}
+              placeholder="e.g. Leica TS16 Total Station"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Category *</label>
             <select value={form.category} onChange={e => set('category', e.target.value)}
@@ -177,11 +184,46 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: () => void
             </select>
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Serial Number</label>
+            <input value={form.serial_number} onChange={e => set('serial_number', e.target.value)}
+              placeholder="e.g. TS16-2024-001"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)}
               rows={2} placeholder="Brief description..."
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none" />
           </div>
+
+          {/* Components */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Associated Components</label>
+            <p className="text-xs text-slate-400 mb-2">Add batteries, cables, cases, etc. — users will check these off at checkout.</p>
+            <div className="flex gap-2">
+              <input value={compInput} onChange={e => setCompInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addComponent(); } }}
+                placeholder="e.g. Battery Pack, Charging Cable…"
+                className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+              <button type="button" onClick={addComponent}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-medium text-slate-700 transition-colors">
+                Add
+              </button>
+            </div>
+            {components.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {components.map(c => (
+                  <span key={c} className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                    {c}
+                    <button type="button" onClick={() => removeComponent(c)} className="hover:text-blue-900 leading-none">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-medium hover:bg-slate-50">Cancel</button>
             <button type="submit" disabled={loading} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50">

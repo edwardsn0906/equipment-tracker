@@ -14,7 +14,7 @@ interface ActivityRow {
   job_number: string | null; cost_code: string | null;
   notes: string | null; checked_out_at: string | null;
   checked_in_at: string | null; duration_minutes: number | null;
-  timestamp: string;
+  timestamp: string; components_included: string[] | null;
 }
 interface Equipment {
   id: string; name: string; category: string;
@@ -23,7 +23,7 @@ interface Equipment {
   current_user: string | null; current_location: string | null;
   checkout_type: string | null; job_number: string | null;
   cost_code: string | null; checked_out_at: string | null;
-  activity: ActivityRow[];
+  activity: ActivityRow[]; components: string[];
 }
 
 /* ─── helpers ────────────────────────────────────── */
@@ -79,11 +79,15 @@ export default function EquipmentPage({ params }: { params: { id: string } }) {
   const [costCode, setCostCode] = useState('');
   const [notes, setNotes] = useState('');
   const [checkinNotes, setCheckinNotes] = useState('');
+  const [selectedComponents, setSelectedComponents] = useState<Set<string>>(new Set());
 
   const fetchEq = async () => {
     const res = await fetch(`/api/equipment/${params.id}`);
     if (!res.ok) { setError(res.status === 404 ? 'Equipment not found' : 'Load failed'); setLoading(false); return; }
-    setEq(await res.json()); setLoading(false);
+    const data = await res.json();
+    setEq(data);
+    setSelectedComponents(new Set(data.components ?? []));
+    setLoading(false);
   };
   useEffect(() => { fetchEq(); }, [params.id]);
 
@@ -92,7 +96,7 @@ export default function EquipmentPage({ params }: { params: { id: string } }) {
     const userName = checkoutType === 'short_term' ? member : longTermName;
     const res = await fetch('/api/checkout', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ equipment_id: params.id, user_name: userName, location, checkout_type: checkoutType, job_number: jobNumber, cost_code: costCode, notes }),
+      body: JSON.stringify({ equipment_id: params.id, user_name: userName, location, checkout_type: checkoutType, job_number: jobNumber, cost_code: costCode, notes, components_included: [...selectedComponents] }),
     });
     if (res.ok) {
       setSuccess(`Checked out to ${userName}. You're responsible for this item.`);
@@ -293,6 +297,27 @@ export default function EquipmentPage({ params }: { params: { id: string } }) {
                   placeholder="e.g. Site A - Downtown"
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base" />
               </div>
+              {eq.components && eq.components.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Components Included</label>
+                  <p className="text-xs text-slate-400 mb-2">Uncheck any components you are NOT taking.</p>
+                  <div className="space-y-2">
+                    {eq.components.map(comp => (
+                      <label key={comp} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                        <input type="checkbox"
+                          checked={selectedComponents.has(comp)}
+                          onChange={e => {
+                            const next = new Set(selectedComponents);
+                            e.target.checked ? next.add(comp) : next.delete(comp);
+                            setSelectedComponents(next);
+                          }}
+                          className="w-4 h-4 rounded accent-blue-600" />
+                        <span className="text-sm text-slate-700">{comp}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Notes <span className="text-slate-400 font-normal">(optional)</span></label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)}
@@ -371,6 +396,13 @@ export default function EquipmentPage({ params }: { params: { id: string } }) {
                       {r.duration_minutes != null && <span>({fmtDuration(r.duration_minutes)})</span>}
                       <span>{timeAgo(r.timestamp)}</span>
                     </div>
+                    {r.components_included && r.components_included.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {r.components_included.map(c => (
+                          <span key={c} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{c}</span>
+                        ))}
+                      </div>
+                    )}
                     {r.notes && <p className="text-xs text-slate-500 mt-1 italic">"{r.notes}"</p>}
                   </div>
                 </div>

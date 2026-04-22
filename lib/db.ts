@@ -24,6 +24,7 @@ export interface Equipment {
   cost_code: string | null;
   checked_out_at: string | null;
   created_at: string;
+  components: string[];
 }
 
 export interface ActivityLog {
@@ -41,6 +42,7 @@ export interface ActivityLog {
   checked_in_at: string | null;
   duration_minutes: number | null;
   timestamp: string;
+  components_included: string[] | null;
 }
 
 /* ─── ensure tables exist ────────────────────────── */
@@ -59,9 +61,11 @@ async function ensureTables() {
       job_number TEXT,
       cost_code TEXT,
       checked_out_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      components TEXT[] DEFAULT '{}'
     )
   `);
+  await pool.query(`ALTER TABLE equipment ADD COLUMN IF NOT EXISTS components TEXT[] DEFAULT '{}'`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS activity_log (
       id SERIAL PRIMARY KEY,
@@ -77,9 +81,11 @@ async function ensureTables() {
       checked_out_at TIMESTAMPTZ,
       checked_in_at TIMESTAMPTZ,
       duration_minutes INTEGER,
-      timestamp TIMESTAMPTZ DEFAULT NOW()
+      timestamp TIMESTAMPTZ DEFAULT NOW(),
+      components_included TEXT[] DEFAULT '{}'
     )
   `);
+  await pool.query(`ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS components_included TEXT[] DEFAULT '{}'`);
 }
 
 /* ─── public API ─────────────────────────────────── */
@@ -114,14 +120,14 @@ export async function getEquipmentById(id: string) {
 }
 
 export async function createEquipment(data: {
-  name: string; category: string; description?: string; serial_number?: string;
+  name: string; category: string; description?: string; serial_number?: string; components?: string[];
 }) {
   await ensureTables();
   const id = randomUUID();
   const { rows } = await pool.query(
-    `INSERT INTO equipment (id, name, category, description, serial_number)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [id, data.name, data.category, data.description ?? '', data.serial_number ?? '']
+    `INSERT INTO equipment (id, name, category, description, serial_number, components)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [id, data.name, data.category, data.description ?? '', data.serial_number ?? '', data.components ?? []]
   );
   return rows[0] as Equipment;
 }
@@ -129,6 +135,7 @@ export async function createEquipment(data: {
 export async function checkOut(args: {
   equipment_id: string; user_name: string; location: string;
   checkout_type: string; job_number: string; cost_code: string; notes?: string;
+  components_included?: string[];
 }) {
   await ensureTables();
   const now = new Date().toISOString();
@@ -149,10 +156,10 @@ export async function checkOut(args: {
   );
   await pool.query(
     `INSERT INTO activity_log
-      (equipment_id, equipment_name, action, checkout_type, user_name, location, job_number, cost_code, notes, checked_out_at)
-     VALUES ($1, $2, 'checked_out', $3, $4, $5, $6, $7, $8, $9)`,
+      (equipment_id, equipment_name, action, checkout_type, user_name, location, job_number, cost_code, notes, checked_out_at, components_included)
+     VALUES ($1, $2, 'checked_out', $3, $4, $5, $6, $7, $8, $9, $10)`,
     [args.equipment_id, equipmentName, args.checkout_type, args.user_name, args.location,
-     args.job_number, args.cost_code, args.notes ?? null, now]
+     args.job_number, args.cost_code, args.notes ?? null, now, args.components_included ?? []]
   );
   const { rows } = await pool.query('SELECT * FROM equipment WHERE id = $1', [args.equipment_id]);
   return rows[0] as Equipment;
