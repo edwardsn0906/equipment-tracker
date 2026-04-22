@@ -53,7 +53,7 @@ async function ensureTables() {
       description TEXT DEFAULT '',
       serial_number TEXT DEFAULT '',
       status TEXT DEFAULT 'available',
-      current_user TEXT,
+      "current_user" TEXT,
       current_location TEXT,
       checkout_type TEXT,
       job_number TEXT,
@@ -138,7 +138,7 @@ export async function checkOut(args: {
   await pool.query(
     `UPDATE equipment SET
       status = 'checked_out',
-      current_user = $1,
+      "current_user" = $1,
       current_location = $2,
       checkout_type = $3,
       job_number = $4,
@@ -171,7 +171,7 @@ export async function checkIn(equipment_id: string, notes?: string) {
   await pool.query(
     `UPDATE equipment SET
       status = 'available',
-      current_user = NULL,
+      "current_user" = NULL,
       current_location = NULL,
       checkout_type = NULL,
       job_number = NULL,
