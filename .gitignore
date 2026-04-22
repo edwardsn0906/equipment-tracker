@@ -6,3 +6,4 @@ equipment-data.json
 .env.local
 .env*.local
 .vercel/
+.vercel

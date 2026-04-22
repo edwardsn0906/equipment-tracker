@@ -3,7 +3,7 @@ import { getEquipmentById } from '@/lib/db';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const eq = getEquipmentById(params.id);
+    const eq = await getEquipmentById(params.id);
     if (!eq) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json(eq);
   } catch (err) {

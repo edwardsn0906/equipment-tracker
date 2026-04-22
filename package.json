@@ -12,7 +12,8 @@
     "react": "^18",
     "react-dom": "^18",
     "qrcode": "^1.5.3",
-    "lucide-react": "^0.378.0"
+    "lucide-react": "^0.378.0",
+    "@vercel/postgres": "^0.10.0"
   },
   "devDependencies": {
     "@types/node": "^20",
