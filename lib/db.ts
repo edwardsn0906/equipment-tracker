@@ -122,7 +122,7 @@ export async function getAllEquipment() {
     SELECT
       e.*,
       (SELECT COUNT(*) FROM activity_log WHERE equipment_id = e.id)::int AS activity_count,
-      (SELECT COUNT(*) FROM issues WHERE equipment_id = e.id AND status = 'open')::int AS open_issue_count,
+      (SELECT COUNT(*) FROM issues i WHERE i.equipment_id = e.id AND i.status = 'open')::int AS open_issue_count,
       (SELECT row_to_json(a) FROM (
         SELECT action, user_name, timestamp FROM activity_log
         WHERE equipment_id = e.id ORDER BY timestamp DESC LIMIT 1

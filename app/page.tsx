@@ -564,9 +564,23 @@ export default function Dashboard() {
 
   const fetchAll = useCallback(async (quiet = false) => {
     if (!quiet) setRefreshing(true);
-    const [eRes, aRes, iRes] = await Promise.all([fetch('/api/equipment'), fetch('/api/activity'), fetch('/api/issues')]);
-    const [eData, aData, iData] = await Promise.all([eRes.json(), aRes.json(), iRes.json()]);
-    setEquipment(eData); setActivity(aData); setIssues(iData);
+    try {
+      const [eRes, aRes, iRes] = await Promise.all([
+        fetch('/api/equipment'),
+        fetch('/api/activity'),
+        fetch('/api/issues'),
+      ]);
+      const [eData, aData, iData] = await Promise.all([
+        eRes.ok ? eRes.json() : Promise.resolve([]),
+        aRes.ok ? aRes.json() : Promise.resolve([]),
+        iRes.ok ? iRes.json() : Promise.resolve([]),
+      ]);
+      if (Array.isArray(eData)) setEquipment(eData);
+      if (Array.isArray(aData)) setActivity(aData);
+      if (Array.isArray(iData)) setIssues(iData);
+    } catch (err) {
+      console.error('fetchAll error:', err);
+    }
     setLoading(false); setLastUpdated(new Date()); setRefreshing(false);
   }, []);
 
