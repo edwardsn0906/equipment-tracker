@@ -309,6 +309,13 @@ function UsageTable({ rows, equipment }: { rows: ActivityRow[]; equipment: Equip
   const [filterEq, setFilterEq] = useState('all');
   const [filterMember, setFilterMember] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const toggleExpand = (id: number) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
 
   const filtered = rows.filter(r => {
     if (filterEq !== 'all' && r.equipment_id !== filterEq) return false;
@@ -318,6 +325,7 @@ function UsageTable({ rows, equipment }: { rows: ActivityRow[]; equipment: Equip
   });
 
   const allUsers = [...new Set(rows.map(r => r.user_name).filter(Boolean))].sort() as string[];
+  const COLS = 11;
 
   return (
     <div className="space-y-4">
@@ -338,50 +346,76 @@ function UsageTable({ rows, equipment }: { rows: ActivityRow[]; equipment: Equip
         <span className="ml-auto text-xs text-slate-400 self-center">{filtered.length} records</span>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto scrollbar-thin">
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
-              {['Equipment','Action','Type','Member / Contact','Job #','Cost Code','Location','Out At','In At','Duration'].map(h => (
+              {['Equipment','Action','Type','Member / Contact','Job #','Cost Code','Location','Out At','In At','Duration','Notes'].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400 text-sm">No records match filters</td></tr>
+              <tr><td colSpan={COLS} className="px-4 py-8 text-center text-slate-400 text-sm">No records match filters</td></tr>
             ) : filtered.map(r => {
               const isVDCMember = r.user_name && VDC_TEAM.find(m => m.name === r.user_name);
+              const hasNotes = !!(r.notes && r.notes.trim());
+              const isOpen = expanded.has(r.id);
               return (
-                <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap max-w-[180px] truncate">
-                    <a href={`/equipment/${r.equipment_id}`} target="_blank" className="hover:text-blue-600 transition-colors">{r.equipment_name}</a>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${r.action === 'checked_out' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                      {r.action === 'checked_out' ? <LogOut size={11} /> : <LogIn size={11} />}
-                      {r.action === 'checked_out' ? 'Out' : 'In'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.checkout_type === 'short_term' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
-                      {r.checkout_type === 'short_term' ? 'Day Use' : 'Long-Term'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      {isVDCMember ? <MemberAvatar name={r.user_name!} /> :
-                        r.user_name ? <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">{getInitials(r.user_name)}</div> : null}
-                      <span className="text-slate-700 text-xs">{r.user_name ?? '—'}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-600 font-mono whitespace-nowrap">{r.job_number ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600 font-mono whitespace-nowrap">{r.cost_code ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap max-w-[140px] truncate">{r.location ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(r.checked_out_at)}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(r.checked_in_at)}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDuration(r.duration_minutes)}</td>
-                </tr>
+                <>
+                  <tr key={r.id} className={`border-b border-slate-50 transition-colors ${hasNotes ? 'cursor-pointer hover:bg-slate-50' : 'hover:bg-slate-50/60'} ${isOpen ? 'bg-slate-50' : ''}`}
+                    onClick={() => hasNotes && toggleExpand(r.id)}>
+                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap max-w-[180px] truncate">
+                      <a href={`/equipment/${r.equipment_id}`} target="_blank" onClick={e => e.stopPropagation()} className="hover:text-blue-600 transition-colors">{r.equipment_name}</a>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${r.action === 'checked_out' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {r.action === 'checked_out' ? <LogOut size={11} /> : <LogIn size={11} />}
+                        {r.action === 'checked_out' ? 'Out' : 'In'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.checkout_type === 'short_term' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                        {r.checkout_type === 'short_term' ? 'Day Use' : 'Long-Term'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        {isVDCMember ? <MemberAvatar name={r.user_name!} /> :
+                          r.user_name ? <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">{getInitials(r.user_name)}</div> : null}
+                        <span className="text-slate-700 text-xs">{r.user_name ?? '—'}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600 font-mono whitespace-nowrap">{r.job_number || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600 font-mono whitespace-nowrap">{r.cost_code || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap max-w-[140px] truncate">{r.location ?? '—'}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(r.checked_out_at)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(r.checked_in_at)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDuration(r.duration_minutes)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {hasNotes ? (
+                        <button onClick={e => { e.stopPropagation(); toggleExpand(r.id); }}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${isOpen ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                          <ChevronDown size={11} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                          {isOpen ? 'Hide' : 'View'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
+                    </td>
+                  </tr>
+                  {hasNotes && isOpen && (
+                    <tr key={`${r.id}-notes`} className="border-b border-slate-50 bg-blue-50/40">
+                      <td colSpan={COLS} className="px-6 py-3">
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-0.5 whitespace-nowrap">Notes</span>
+                          <p className="text-sm text-slate-700 leading-relaxed">{r.notes}</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               );
             })}
           </tbody>
